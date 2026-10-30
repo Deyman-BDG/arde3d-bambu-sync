@@ -6,6 +6,7 @@
     "sync": "node sync.mjs"
   },
   "dependencies": {
-    "firebase": "10.14.1"
+    "firebase": "10.14.1",
+    "mqtt": "5.10.1"
   }
 }

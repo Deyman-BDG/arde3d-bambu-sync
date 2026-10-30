@@ -65,7 +65,8 @@ function bandeja(slot, t, unidad) {
     color: (t.tray_color || '').slice(0, 6).toUpperCase(),
     codigo: t.tray_info_idx || '',
     peso: Number(t.tray_weight) || 1000,
-    restante: remain >= 0 && remain <= 100 ? remain : null,
+    // Sin etiqueta RFID el AMS no sabe cuánto queda
+    restante: uuid && remain >= 0 && remain <= 100 ? remain : null,
     rfid: uuid
   };
 }

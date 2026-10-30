@@ -2,7 +2,8 @@
 // Firebase de la calculadora Arde3D. Lo lanza GitHub Actions cada 10 min.
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, runTransaction, serverTimestamp, terminate } from 'firebase/firestore';
-import { procesar } from './logica.mjs';
+import { procesar, aplicarAms } from './logica.mjs';
+import { leerImpresora } from './ams.mjs';
 
 // Misma configuración pública que calculadora3d.html
 const FIREBASE_CONFIG = {
@@ -47,26 +48,39 @@ async function main() {
   const est = (await getDoc(estadoRef)).data() || {};
   const tareas = await leerTareas();
 
-  // Primera vez: solo marca desde cuándo contar, para no descontar el historial antiguo
-  if (!est.since) {
-    await guardarEstado({ since: new Date().toISOString(), error: null });
-    console.log('Primera ejecución: contaré las impresiones que terminen a partir de ahora.');
-    return;
+  // Estado en directo del AMS (colores, % restante, RFID). Si falla, el resto sigue igual.
+  let live = null, avisoAms = null;
+  try {
+    live = await leerImpresora(TOKEN);
+    await setDoc(ref('bambu_live'), { ...live, leidoEn: new Date().toISOString() });
+  } catch (e) {
+    avisoAms = e.message;
+    console.warn('⚠️ AMS: ' + e.message);
   }
+
+  // Primera vez: solo marca desde cuándo contar, para no descontar el historial antiguo
+  const since = est.since || new Date().toISOString();
+  if (!est.since) console.log('Primera ejecución: contaré las impresiones que terminen a partir de ahora.');
 
   const res = await runTransaction(db, async (tx) => {
     const claves = ['f3d', 'ams3d', 'imp3d', 'ped3d'];
     const snaps = await Promise.all(claves.map((k) => tx.get(ref(k))));
     const datos = {};
     claves.forEach((k, i) => { datos[k] = (snaps[i].exists() && snaps[i].data().items) || []; });
-    const r = procesar(tareas, datos, est.since);
-    for (const k of ['f3d', 'imp3d', 'ped3d']) {
+    const r = procesar(tareas, datos, since);
+    // Después de descontar, el % real del AMS manda sobre las bobinas RFID
+    const a = live ? aplicarAms(datos, live, Date.now()) : { f3d: false, ams3d: false, nuevos: [] };
+    r.cambios.f3d = r.cambios.f3d || a.f3d;
+    r.cambios.ams3d = a.ams3d;
+    r.nuevos = a.nuevos;
+    for (const k of ['f3d', 'ams3d', 'imp3d', 'ped3d']) {
       if (r.cambios[k]) tx.set(ref(k), { items: datos[k], updatedBy: QUIEN, updatedAt: serverTimestamp() });
     }
     return r;
   });
-  await guardarEstado({ error: null });
+  await guardarEstado({ since, error: null, avisoAms });
   console.log(res.nuevas ? res.nuevas + ' impresión(es) nueva(s) procesada(s).' : 'Sin impresiones nuevas.');
+  if (res.nuevos.length) console.log('Filamentos nuevos por RFID: ' + res.nuevos.join(', '));
 }
 
 let codigo = 0;

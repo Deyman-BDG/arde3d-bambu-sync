@@ -6,6 +6,10 @@ Cada 10 minutos GitHub mira tu cuenta de Bambu Cloud. Cuando termina una impresi
 - si el nombre del archivo contiene el texto de un pedido, suma las unidades en **📋 Pedidos**;
 - lo apunta en **🖨️ Impresora**. Las impresiones fallidas, o de ranuras sin asignar, quedan ahí para que las revises.
 
+En cada pasada también lee el AMS en directo, igual que Bambu Handy: color, material, % restante y etiqueta RFID de cada ranura.
+- **Bobinas con RFID** (las de Bambu): se dan de alta solas en Stock y su stock se ajusta al % real que marca el AMS. Si ya tenías ese filamento apuntado a mano, se enlaza con él: lo que sobra se cuenta como bobinas cerradas.
+- **Bobinas sin RFID**: elige en 🖨️ Impresora qué filamento es cada una. Se descuentan por los gramos que dice cada impresión.
+
 No hace falta tener nada encendido en casa. La impresora solo tiene que estar conectada a tu cuenta de Bambu (lo normal si usas Bambu Handy o Bambu Studio en modo nube).
 
 ---
@@ -53,6 +57,8 @@ En el repo: **Settings → Secrets and variables → Actions → New repository 
 | Archivo | Qué hace |
 |---|---|
 | `sync.mjs` | Lee Bambu Cloud y actualiza Firebase |
-| `logica.mjs` | Las reglas de descuento y pedidos |
+| `logica.mjs` | Las reglas de descuento, pedidos y bobinas RFID |
+| `ams.mjs` | Lee el AMS en directo por MQTT de Bambu Cloud |
+| `sondeo.mjs` | Prueba manual: Actions → «Sondeo impresora» muestra lo que ve la impresora |
 | `login.ps1` | Saca el token de Bambu (se ejecuta en tu PC) |
 | `.github/workflows/bambu-sync.yml` | La tarea de GitHub que lo lanza cada 10 min |

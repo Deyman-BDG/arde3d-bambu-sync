@@ -25,10 +25,15 @@ function Post($url, $body, $session) {
 
 try {
   $email = (Read-Host 'Email de tu cuenta Bambu Lab').Trim()
+  Write-Host 'Si entras con Google o no recuerdas la contrasena, deja la contrasena vacia y pulsa Enter: te llegara un codigo por email.' -ForegroundColor Yellow
   $sec = Read-Host 'Contrasena (no se ve al escribir)' -AsSecureString
   $pass = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
 
-  $r = Post "$api/user/login" @{ account = $email; password = $pass; apiError = '' }
+  if ($pass) {
+    $r = Post "$api/user/login" @{ account = $email; password = $pass; apiError = '' }
+  } else {
+    $r = [pscustomobject]@{ loginType = 'verifyCode' }
+  }
   $token = $r.accessToken
 
   if (-not $token -and $r.loginType -eq 'verifyCode') {

@@ -2,6 +2,7 @@
 // Firebase de la calculadora Arde3D. Lo lanza GitHub Actions cada 10 min.
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, runTransaction, serverTimestamp, terminate } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { procesar, aplicarAms } from './logica.mjs';
 import { leerImpresora } from './ams.mjs';
 
@@ -17,7 +18,18 @@ const FIREBASE_CONFIG = {
 const QUIEN = 'bambu';
 const TOKEN = process.env.BAMBU_TOKEN;
 
-const db = getFirestore(initializeApp(FIREBASE_CONFIG));
+const app = initializeApp(FIREBASE_CONFIG);
+const db = getFirestore(app);
+
+// La base de datos solo admite usuarios con sesión: entra con la cuenta de la tarea
+async function entrar() {
+  const { SYNC_EMAIL, SYNC_PASSWORD } = process.env;
+  if (!SYNC_EMAIL || !SYNC_PASSWORD) {
+    console.warn('⚠️ Faltan los secretos SYNC_EMAIL / SYNC_PASSWORD: se intenta sin sesión');
+    return;
+  }
+  await signInWithEmailAndPassword(getAuth(app), SYNC_EMAIL, SYNC_PASSWORD);
+}
 const ref = (k) => doc(db, 'arde3d_data', k);
 const estadoRef = ref('bambu_state');
 
@@ -45,6 +57,7 @@ async function leerTareas() {
 
 async function main() {
   if (!TOKEN) throw Object.assign(new Error('Falta el secreto BAMBU_TOKEN en GitHub'), { token: true });
+  await entrar();
   const est = (await getDoc(estadoRef)).data() || {};
   const tareas = await leerTareas();
 

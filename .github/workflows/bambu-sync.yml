@@ -26,6 +26,8 @@ jobs:
       - run: node sync.mjs
         env:
           BAMBU_TOKEN: ${{ secrets.BAMBU_TOKEN }}
+          SYNC_EMAIL: ${{ secrets.SYNC_EMAIL }}
+          SYNC_PASSWORD: ${{ secrets.SYNC_PASSWORD }}
       # GitHub pausa las tareas programadas tras 60 días sin actividad; esto la mantiene activa
       - name: Mantener activa
         if: always()

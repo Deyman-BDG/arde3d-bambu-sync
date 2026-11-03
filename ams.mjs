@@ -39,6 +39,7 @@ export function resumirInforme(p, dev) {
   });
   if (p.vt_tray) bandejas.push(bandeja('ext', p.vt_tray, null));
   return {
+    serial: dev.dev_id,
     impresora: dev.name || dev.dev_product_name || 'Impresora',
     modelo: dev.dev_product_name || '',
     online: dev.online !== false,
@@ -71,10 +72,15 @@ function bandeja(slot, t, unidad) {
   };
 }
 
-// Conecta, pide el estado completo (pushall) y devuelve el resumen. Máx ~20 s.
-export async function leerImpresora(token) {
+// Impresoras que ve la cuenta (las suyas y las compartidas con ella)
+export async function listarImpresoras(token) {
   const binds = await getJson(API + '/v1/iot-service/api/user/bind', token);
-  const dev = (binds.devices || [])[0];
+  return binds.devices || [];
+}
+
+// Conecta, pide el estado completo (pushall) y devuelve el resumen. Máx ~20 s.
+export async function leerImpresora(token, dev) {
+  if (!dev) dev = (await listarImpresoras(token))[0];
   if (!dev) throw new Error('No hay ninguna impresora vinculada a la cuenta');
   const usuario = await usuarioMqtt(token);
 

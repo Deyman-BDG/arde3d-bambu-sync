@@ -3,8 +3,8 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, runTransaction, serverTimestamp, terminate } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
-import { procesar, aplicarAms } from './logica.mjs';
-import { leerImpresora } from './ams.mjs';
+import { procesar, aplicarAms, unirTareas, migrarRanuras } from './logica.mjs';
+import { leerImpresora, listarImpresoras } from './ams.mjs';
 
 // Misma configuración pública que calculadora3d.html
 const FIREBASE_CONFIG = {
@@ -16,7 +16,10 @@ const FIREBASE_CONFIG = {
   appId: '1:1081747480900:web:0ce6bb2603f735a6fbb711'
 };
 const QUIEN = 'bambu';
-const TOKEN = process.env.BAMBU_TOKEN;
+// Una cuenta de Bambu por socio; la segunda es opcional
+const CUENTAS = [['david', process.env.BAMBU_TOKEN], ['aaron', process.env.BAMBU_TOKEN_2]]
+  .filter((c) => c[1]).map(([quien, token]) => ({ quien, token }));
+const NOMBRE = { david: 'David', aaron: 'Aaron' };
 
 const app = initializeApp(FIREBASE_CONFIG);
 const db = getFirestore(app);
@@ -37,10 +40,10 @@ async function guardarEstado(campos) {
   await setDoc(estadoRef, { ...campos, lastRun: new Date().toISOString() }, { merge: true });
 }
 
-async function leerTareas() {
+async function leerTareas(token) {
   const r = await fetch('https://api.bambulab.com/v1/user-service/my/tasks?limit=20', {
     headers: {
-      'Authorization': 'Bearer ' + TOKEN,
+      'Authorization': 'Bearer ' + token,
       'User-Agent': 'bambu_network_agent/01.09.05.01',
       'X-BBL-Client-Name': 'OrcaSlicer',
       'X-BBL-Client-Type': 'slicer',
@@ -56,20 +59,46 @@ async function leerTareas() {
 }
 
 async function main() {
-  if (!TOKEN) throw Object.assign(new Error('Falta el secreto BAMBU_TOKEN en GitHub'), { token: true });
+  if (!CUENTAS.length) throw Object.assign(new Error('Falta el secreto BAMBU_TOKEN en GitHub'), { token: true });
   await entrar();
   const est = (await getDoc(estadoRef)).data() || {};
-  const tareas = await leerTareas();
+  // De quién es cada impresora: se apunta la primera vez que aparece y luego no cambia
+  const duenos = { ...(est.duenos || {}) };
+  const avisos = [];
+  const porCuenta = [], impresoras = [];
+  let primerError = null;
 
-  // Estado en directo del AMS (colores, % restante, RFID). Si falla, el resto sigue igual.
-  let live = null, avisoAms = null;
-  try {
-    live = await leerImpresora(TOKEN);
-    await setDoc(ref('bambu_live'), { ...live, leidoEn: new Date().toISOString() });
-  } catch (e) {
-    avisoAms = e.message;
-    console.warn('⚠️ AMS: ' + e.message);
+  for (const c of CUENTAS) {
+    try {
+      porCuenta.push({ quien: c.quien, tareas: await leerTareas(c.token) });
+    } catch (e) {
+      // Si falla una cuenta, la otra sigue funcionando
+      if (!primerError) primerError = e;
+      avisos.push(NOMBRE[c.quien] + ': ' + e.message);
+      continue;
+    }
+    // Estado en directo del AMS (colores, % restante, RFID). Si falla, el resto sigue igual.
+    try {
+      for (const dev of await listarImpresoras(c.token)) {
+        if (!duenos[dev.dev_id]) duenos[dev.dev_id] = c.quien;
+        if (impresoras.some((i) => i.serial === dev.dev_id)) continue;
+        try {
+          impresoras.push({ ...(await leerImpresora(c.token, dev)), dueno: duenos[dev.dev_id] });
+        } catch (e) {
+          avisos.push((dev.name || 'Impresora') + ': ' + e.message);
+        }
+      }
+    } catch (e) {
+      avisos.push(NOMBRE[c.quien] + ': ' + e.message);
+    }
   }
+  if (!porCuenta.length) throw primerError;
+  avisos.forEach((a) => console.warn('⚠️ ' + a));
+  const avisoAms = avisos.join(' · ') || null;
+  if (impresoras.length) await setDoc(ref('bambu_live'), { impresoras, leidoEn: new Date().toISOString() });
+  const tareas = unirTareas(porCuenta, duenos);
+  // La impresora de David es la de antes: sus ranuras guardadas sin serial son de ella
+  const principal = Object.keys(duenos).find((s) => duenos[s] === 'david');
 
   // Primera vez: solo marca desde cuándo contar, para no descontar el historial antiguo
   const since = est.since || new Date().toISOString();
@@ -80,18 +109,19 @@ async function main() {
     const snaps = await Promise.all(claves.map((k) => tx.get(ref(k))));
     const datos = {};
     claves.forEach((k, i) => { datos[k] = (snaps[i].exists() && snaps[i].data().items) || []; });
+    const migradas = migrarRanuras(datos.ams3d, principal);
     const r = procesar(tareas, datos, since);
     // Después de descontar, el % real del AMS manda sobre las bobinas RFID
-    const a = live ? aplicarAms(datos, live, Date.now()) : { f3d: false, ams3d: false, nuevos: [] };
+    const a = aplicarAms(datos, impresoras, Date.now());
     r.cambios.f3d = r.cambios.f3d || a.f3d;
-    r.cambios.ams3d = a.ams3d;
+    r.cambios.ams3d = a.ams3d || migradas;
     r.nuevos = a.nuevos;
     for (const k of ['f3d', 'ams3d', 'imp3d', 'ped3d']) {
       if (r.cambios[k]) tx.set(ref(k), { items: datos[k], updatedBy: QUIEN, updatedAt: serverTimestamp() });
     }
     return r;
   });
-  await guardarEstado({ since, error: null, avisoAms });
+  await guardarEstado({ since, error: null, avisoAms, duenos });
   console.log(res.nuevas ? res.nuevas + ' impresión(es) nueva(s) procesada(s).' : 'Sin impresiones nuevas.');
   if (res.nuevos.length) console.log('Filamentos nuevos por RFID: ' + res.nuevos.join(', '));
 }

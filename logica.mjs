@@ -3,6 +3,17 @@
 
 export const MAX_REGISTRO = 100;
 
+// Cada socio tiene su impresora y su stock. Lo de antes de este cambio era de David.
+export const DUENO_DEF = 'david';
+export const duenoDe = (f) => f.dueno || DUENO_DEF;
+
+// Las ranuras guardadas antes de haber dos impresoras eran de la impresora principal
+export function migrarRanuras(ams, principal) {
+  let cambio = false;
+  ams.forEach((a) => { if (!a.serial && principal) { a.serial = principal; cambio = true; } });
+  return cambio;
+}
+
 // Clave de ranura igual que en la app: "0-0".."0-3" para el AMS 1, "ext" para la bobina externa
 export function claveRanura(m) {
   var amsId = m.amsId, slotId = m.slotId;
@@ -18,6 +29,18 @@ export function claveRanura(m) {
 export function normalizar(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+// Junta las impresiones de las dos cuentas sin repetir y apunta quién mandó cada una.
+// Si sale en las dos cuentas, la mandó el que no es dueño de la impresora (el dueño ve todo lo de su máquina).
+export function unirTareas(porCuenta, duenos) {
+  const vistas = new Map();
+  porCuenta.forEach(({ quien, tareas }) => tareas.forEach((t) => {
+    const v = vistas.get(String(t.id));
+    if (!v) vistas.set(String(t.id), { ...t, _envia: quien });
+    else if (quien !== duenos[t.deviceId]) v._envia = quien;
+  }));
+  return [...vistas.values()];
 }
 
 function terminada(t) {
@@ -39,7 +62,7 @@ function buscarPedido(pedidos, titulo) {
   return cand[0] || null;
 }
 
-// tasks: hits de /my/tasks · datos: { f3d, ams3d, imp3d, ped3d } (arrays) · since: ISO
+// tasks: hits de /my/tasks (con _envia: quién lo mandó) · datos: { f3d, ams3d, imp3d, ped3d } (arrays) · since: ISO
 export function procesar(tasks, datos, since) {
   var fils = datos.f3d, ams = datos.ams3d, reg = datos.imp3d, peds = datos.ped3d;
   var vistos = new Set(reg.map(function (r) { return String(r.id); }));
@@ -53,7 +76,7 @@ export function procesar(tasks, datos, since) {
     var titulo = t.title || t.designTitle || 'Impresión';
     var entrada = {
       id: String(t.id), titulo: titulo, fin: t.endTime, estado: ok ? 'ok' : 'fallida',
-      impresora: t.deviceName || '', slots: [], revisar: !ok
+      impresora: t.deviceName || '', serial: t.deviceId || '', enviadoPor: t._envia || '', slots: [], revisar: !ok
     };
     var mapping = (t.amsDetailMapping && t.amsDetailMapping.length)
       ? t.amsDetailMapping
@@ -62,7 +85,7 @@ export function procesar(tasks, datos, since) {
       var g = Math.round((parseFloat(m.weight) || 0) * 10) / 10;
       if (g <= 0) return;
       var slot = claveRanura(m);
-      var asig = ams.find(function (a) { return a.slot === slot; });
+      var asig = ams.find(function (a) { return a.slot === slot && (!t.deviceId || a.serial === t.deviceId); });
       var fl = asig && fils.find(function (f) { return f.id === asig.filId; });
       var s = { slot: slot, tipo: m.filamentType || '', color: (m.sourceColor || '').slice(0, 6), g: g, filId: fl ? fl.id : null, descontado: false };
       if (ok && fl) {
@@ -119,29 +142,31 @@ export function nombreColor(hex) {
 const PRECIO_KG = { 'PLA Basic': 19.99, 'PLA Matte': 19.99, 'PETG HF': 19.99, 'PETG Basic': 19.99, 'ASA': 24.99, 'ABS': 19.99, 'TPU': 34.99 };
 const r1 = (n) => Math.round(n * 10) / 10;
 
-// live: resumen de ams.mjs · datos: { f3d, ams3d } · devuelve qué ha cambiado
-export function aplicarAms(datos, live, ahoraMs) {
+// impresoras: [{ serial, dueno, bandejas }] de ams.mjs · datos: { f3d, ams3d } · devuelve qué ha cambiado
+export function aplicarAms(datos, impresoras, ahoraMs) {
   const fils = datos.f3d;
   let ams = datos.ams3d;
   const cambios = { f3d: false, ams3d: false, nuevos: [] };
   const antesAms = JSON.stringify(ams);
   const enAms = new Set();
 
-  live.bandejas.forEach((b) => {
+  impresoras.forEach((imp) => imp.bandejas.forEach((b) => {
+    const esta = (a) => a.slot === b.slot && a.serial === imp.serial;
     // Ranura vacía o con bobina sin RFID que antes tenía una RFID: quita la asignación automática
     if (b.vacia || !b.rfid) {
-      ams = ams.filter((a) => !(a.slot === b.slot && (b.vacia || a.auto)));
+      ams = ams.filter((a) => !(esta(a) && (b.vacia || a.auto)));
       return;
     }
     enAms.add(b.rfid);
     const key = 'bl-' + b.codigo + '-' + b.color;
     const gramos = b.restante != null ? Math.round(b.restante / 100 * b.peso) : null;
     const nombreTipo = b.subtipo || b.tipo;
-    let fl = fils.find((f) => f.rfidKey === key);
+    // Mismo filamento en casa de cada socio = dos stocks distintos
+    let fl = fils.find((f) => f.rfidKey === key && duenoDe(f) === imp.dueno);
     if (!fl) {
       // ¿Ya lo tenías dado de alta a mano? (Bambu + mismo material + mismo color)
       const col = normalizar(nombreColor(b.color));
-      fl = fils.find((f) => !f.rfidKey && normalizar(f.marca).indexOf('bambu') >= 0 &&
+      fl = fils.find((f) => !f.rfidKey && duenoDe(f) === imp.dueno && normalizar(f.marca).indexOf('bambu') >= 0 &&
         normalizar(nombreTipo).indexOf(normalizar(f.tipo)) >= 0 && normalizar(f.color).indexOf(col) >= 0);
       if (fl) {
         fl.rfidKey = key;
@@ -151,7 +176,7 @@ export function aplicarAms(datos, live, ahoraMs) {
         fl = {
           id: 'f' + ahoraMs + fils.length, marca: 'Bambu Lab', tipo: nombreTipo, color: nombreColor(b.color),
           precio: PRECIO_KG[nombreTipo] || 24, stock: 0, min: 150, notas: 'Añadido solo desde el AMS (RFID)',
-          rfidKey: key, bobinas: {}, extra: 0
+          rfidKey: key, bobinas: {}, extra: 0, dueno: imp.dueno
         };
         fils.push(fl);
         cambios.nuevos.push(fl.marca + ' ' + fl.tipo + ' ' + fl.color);
@@ -169,11 +194,11 @@ export function aplicarAms(datos, live, ahoraMs) {
       fl.bobinas[b.rfid] = gramos;
       cambios.f3d = true;
     }
-    const a = ams.find((x) => x.slot === b.slot);
+    const a = ams.find(esta);
     if (!a || a.filId !== fl.id) {
-      ams = ams.filter((x) => x.slot !== b.slot).concat([{ slot: b.slot, filId: fl.id, auto: true }]);
+      ams = ams.filter((x) => !esta(x)).concat([{ slot: b.slot, serial: imp.serial, filId: fl.id, auto: true }]);
     }
-  });
+  }));
 
   // Recalcula el stock de los filamentos RFID; olvida bobinas acabadas que ya no están en el AMS
   fils.forEach((f) => {

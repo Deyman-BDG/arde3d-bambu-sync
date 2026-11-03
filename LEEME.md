@@ -42,6 +42,13 @@ En el repo: **Settings → Secrets and variables → Actions → New repository 
 2. Pestaña **📋 Pedidos**: crea los pedidos. En «Texto del nombre de archivo» pon algo que aparezca en el nombre del archivo que mandas a imprimir (por ejemplo `carwash`). Así se cuentan solos.
 3. Para que Pedidos calcule el filamento que hace falta, el producto tiene que estar guardado en **📦 Mis Productos** con un filamento de «Mis filamentos». Los productos guardados antes de esta versión hay que volver a guardarlos una vez.
 
+### 6. La impresora de tu socio (opcional)
+1. Tu socio ejecuta `login.bat` con **su** cuenta de Bambu.
+2. Guarda su token en GitHub como otro secreto: Name `BAMBU_TOKEN_2`.
+3. Espera una pasada (10 min): su impresora queda apuntada como suya. **Después** os podéis compartir las impresoras en Bambu Handy. Si se comparten antes, la tarea podría apuntar la impresora de tu socio como tuya.
+
+Cada filamento tiene dueño («Dónde está» en Stock). Las bobinas RFID de cada AMS se dan de alta en el stock del dueño de esa impresora. En 🖨️ Impresora cada impresión dice en qué impresora se hizo y quién la mandó.
+
 ---
 
 ## Mantenimiento

@@ -54,7 +54,9 @@ Cada filamento tiene dueño («Dónde está» en Stock). Las bobinas RFID de cad
 ## Mantenimiento
 - **Cada ~3 meses** caduca el token. La app lo avisa en 🖨️ Impresora (🔴 Token caducado) y GitHub te manda un email. Repite los pasos 2 y 3.
 - **Cuando cambies una bobina en el AMS**, cámbiala también en 🖨️ Impresora.
-- Si la app dice «Lleva un rato sin comprobar», entra en GitHub → Actions y pulsa **Enable workflow** si aparece.
+- Si la app dice «Lleva un rato sin comprobar», entra en GitHub → Actions y pulsa **Enable workflow** si aparece. Mira también el historial del job en cron-job.org.
+- **Lanzamiento cada 10 min:** GitHub por sí solo la lanza cada varias horas. Por eso [cron-job.org](https://console.cron-job.org/jobs) (job «Arde3D Bambu sync») la lanza cada 10 min con la clave de GitHub «cron-job-arde3d-2», que solo sirve para este repositorio. **Caduca el 10/11/2027**: crea otra en GitHub → Settings → Fine-grained tokens y pégala en el job (Avanzado → Authorization: `Bearer ` + clave).
+- **Impresora del socio:** Bambu Handy no permite compartir impresoras entre cuentas. Para imprimir en la del otro, pasaos el 3MF y que la lance su dueño.
 
 ## Límites a saber
 - Bambu da el peso **previsto** por el laminador. Para impresiones canceladas o fallidas no se sabe lo que se gastó de verdad: por eso no se descuentan solas, te las pone para revisar.

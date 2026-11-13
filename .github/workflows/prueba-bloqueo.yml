@@ -1,0 +1,14 @@
+name: Prueba bloqueo Bambu
+on: workflow_dispatch
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          u="https://api.bambulab.com/v1/user-service/my/tasks?limit=1"
+          for ua in "bambu_network_agent/01.09.05.01" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36" "curl/8.5"; do
+            c=$(curl -s -o b.html -w "%{http_code}" -H "User-Agent: $ua" "$u"); echo "$c $ua :: $(grep -o -i 'cloudflare\|cf-ray\|Ray ID: [a-z0-9]*\|Access denied\|blocked' b.html | sort -u | tr '\n' ' ')"
+          done
+          c=$(curl -s -o b.html -w "%{http_code}" "https://api.bambulab.com/v1/iot-service/api/user/bind"); echo "bind $c"
+          c=$(curl -s -o b.html -w "%{http_code}" "https://bambulab.com/"); echo "web $c"
+          curl -s https://ifconfig.me; echo

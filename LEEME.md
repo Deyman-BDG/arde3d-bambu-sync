@@ -52,7 +52,7 @@ Cada filamento tiene dueño («Dónde está» en Stock). Las bobinas RFID de cad
 ---
 
 ## Mantenimiento
-- **Cada ~3 meses** caduca el token. La app lo avisa en 🖨️ Impresora (🔴 Token caducado) y GitHub te manda un email. Repite los pasos 2 y 3.
+- **Cada ~3 meses** caduca el token. La app lo avisa en 🖨️ Impresora (🔴 Token caducado) y GitHub te manda un email. Lo más rápido: en esta carpeta, `powershell -ExecutionPolicy Bypass -File .\renovar-token.ps1` (o `... .\renovar-token.ps1 BAMBU_TOKEN_2` para el socio). Hace el login y lo guarda en GitHub solo. Antes de renovar, mira el registro de la tarea: si pone «Bambu respondió 403» con una página HTML, no es el token, es Bambu bloqueando la petición.
 - **Cuando cambies una bobina en el AMS**, cámbiala también en 🖨️ Impresora.
 - Si la app dice «Lleva un rato sin comprobar», entra en GitHub → Actions y pulsa **Enable workflow** si aparece. Mira también el historial del job en cron-job.org.
 - **Lanzamiento cada 10 min:** GitHub por sí solo la lanza cada varias horas. Por eso [cron-job.org](https://console.cron-job.org/jobs) (job «Arde3D Bambu sync») la lanza cada 10 min con la clave de GitHub «cron-job-arde3d-2», que solo sirve para este repositorio. **Caduca el 10/11/2027**: crea otra en GitHub → Settings → Fine-grained tokens y pégala en el job (Avanzado → Authorization: `Bearer ` + clave).

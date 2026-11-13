@@ -52,6 +52,7 @@ async function leerTareas(token) {
       'accept': 'application/json'
     }
   });
+  if (r.status === 401 || r.status === 403) console.warn('Bambu respondió ' + r.status + ': ' + (await r.clone().text()).slice(0, 300).replace(/\s+/g, ' '));
   if (r.status === 401 || r.status === 403) throw Object.assign(new Error('Token de Bambu caducado o no válido: genera uno nuevo con login.ps1'), { token: true });
   if (!r.ok) throw new Error('Bambu Cloud respondió ' + r.status);
   const j = await r.json();
